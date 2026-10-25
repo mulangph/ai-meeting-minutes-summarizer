@@ -46,15 +46,18 @@ def summarize_in_markup(transcription):
 
     tokenizer = AutoTokenizer.from_pretrained(LLAMA)
     tokenizer.pad_token = tokenizer.eos_token
-    inputs = tokenizer.apply_chat_template(messages, return_tensors="pt").to("cuda")
-    
-    streamer = TextStreamer(tokenizer)
-    
+    # add_generation_prompt opens the assistant turn so the model writes the minutes
+    inputs = tokenizer.apply_chat_template(messages, add_generation_prompt=True, return_tensors="pt").to("cuda")
+
+    streamer = TextStreamer(tokenizer, skip_prompt=True)
+
     # Model loads dynamically, processes, and releases
     model = AutoModelForCausalLM.from_pretrained(LLAMA, device_map="auto", quantization_config=quant_config)
     outputs = model.generate(**inputs, max_new_tokens=2000, streamer=streamer)
-    
-    final_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+    # generate() returns prompt + reply; decode only the newly generated tokens
+    prompt_length = inputs["input_ids"].shape[-1]
+    final_text = tokenizer.decode(outputs[0][prompt_length:], skip_special_tokens=True)
     
     # Explicitly clear GPU memory tracking references
     del model
